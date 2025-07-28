@@ -1,15 +1,38 @@
-"use client";
-
 export interface Share {
   x: bigint;
   y: bigint;
 }
 
 export interface ShamirData {
-  prime: string;
-  k: number;
-  shares: { x: number; y: string }[];
+    keys: {
+        n: number;
+        k: number;
+    };
+    [key: string]: any;
 }
+
+function parseBigInt(value: string, base: number | string): bigint {
+    const baseNum = typeof base === 'string' ? parseInt(base, 10) : base;
+    if (isNaN(baseNum) || baseNum < 2 || baseNum > 36) {
+        throw new Error(`Invalid base for BigInt conversion: ${base}`);
+    }
+
+    const legalChars = '0123456789abcdefghijklmnopqrstuvwxyz'.slice(0, baseNum);
+    const regex = new RegExp(`^[${legalChars}]+$`, 'i');
+    if (!regex.test(value)) {
+        throw new Error(`Value "${value}" contains invalid characters for base ${baseNum}`);
+    }
+
+    let result = 0n;
+    let power = 1n;
+    for (let i = value.length - 1; i >= 0; i--) {
+        const digit = parseInt(value[i], baseNum);
+        result += BigInt(digit) * power;
+        power *= BigInt(baseNum);
+    }
+    return result;
+}
+
 
 function egcd(a: bigint, b: bigint): [bigint, bigint, bigint] {
   if (a === 0n) {
@@ -29,25 +52,26 @@ function modInverse(a: bigint, m: bigint): bigint {
 
 function reconstructSecret(shares: Share[], prime: bigint): bigint {
   let secret = 0n;
+  const k = shares.length;
 
-  for (let i = 0; i < shares.length; i++) {
+  for (let i = 0; i < k; i++) {
     const { x: xi, y: yi } = shares[i];
     let numerator = 1n;
     let denominator = 1n;
 
-    for (let j = 0; j < shares.length; j++) {
+    for (let j = 0; j < k; j++) {
       if (i === j) continue;
       const { x: xj } = shares[j];
-      numerator = (numerator * xj) % prime;
-      denominator = (denominator * (xj - xi)) % prime;
+      numerator = (numerator * (0n - xj)) % prime;
+      denominator = (denominator * (xi - xj)) % prime;
     }
     
     if (denominator === 0n) {
         throw new Error(`Cannot reconstruct with this set of shares, division by zero would occur. Check for duplicate x-coordinates.`);
     }
 
-    const lagrangePolynomial = (numerator * modInverse(denominator, prime)) % prime;
-    secret = (secret + yi * lagrangePolynomial) % prime;
+    const lagrangePolynomial = (yi * numerator * modInverse(denominator, prime)) % prime;
+    secret = (secret + lagrangePolynomial) % prime;
   }
 
   return (secret + prime) % prime;
@@ -60,14 +84,13 @@ function getCombinations<T>(array: T[], size: number): T[][] {
       result.push([...combination]);
       return;
     }
-    if (startIndex > array.length - (size - combination.length)) {
+    if (startIndex >= array.length) {
         return;
     }
     
     combination.push(array[startIndex]);
     combine(startIndex + 1, combination);
     combination.pop();
-
     combine(startIndex + 1, combination);
   }
   combine(0, []);
@@ -93,7 +116,28 @@ function evaluatePolynomial(x: bigint, points: Share[], prime: bigint): bigint {
   return (result + prime) % prime;
 }
 
-export function findValidSharesAndReconstruct(allShares: Share[], k: number, prime: bigint) {
+export function findValidSharesAndReconstruct(data: ShamirData) {
+    if (!data.keys || typeof data.keys.k !== 'number') {
+        return { error: "Invalid JSON structure. It must contain 'keys' object with a numeric 'k' value." };
+    }
+
+    const { k } = data.keys;
+    const prime = 257n; 
+
+    const allShares: Share[] = [];
+    for (const key in data) {
+        if (key !== "keys") {
+            try {
+                const x = BigInt(key);
+                const { base, value } = data[key];
+                const y = parseBigInt(value, base);
+                allShares.push({ x, y });
+            } catch (e: any) {
+                 return { error: `Failed to parse share for key "${key}": ${e.message}` };
+            }
+        }
+    }
+
   if (allShares.length < k) {
     return { error: `Not enough shares provided. Need at least ${k}, but got ${allShares.length}.` };
   }

@@ -2,6 +2,11 @@
 
 import { useState, useCallback, useRef, type ChangeEvent } from 'react';
 import { findValidSharesAndReconstruct, type Share, type ShamirData } from '@/lib/shamir';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Upload, KeyRound, CheckCircle, XCircle, Copy } from 'lucide-react';
 
 interface ResultState {
   secret: bigint;
@@ -43,25 +48,8 @@ export default function ShamirReconstructor() {
     try {
       const fileContent = await file.text();
       const data: ShamirData = JSON.parse(fileContent);
-
-      if (!data.prime || !data.k || !data.shares) {
-        throw new Error("Invalid JSON structure. It must contain 'prime', 'k', and 'shares'.");
-      }
-      if (typeof data.k !== 'number') {
-        throw new Error("'k' must be a number.");
-      }
-      if (!Array.isArray(data.shares)) {
-        throw new Error("'shares' must be an array.");
-      }
-
-      const prime = BigInt(data.prime);
-      const k = data.k;
-      const allShares: Share[] = data.shares.map(s => ({
-        x: BigInt(s.x),
-        y: BigInt(s.y),
-      }));
-
-      const reconstructionResult = findValidSharesAndReconstruct(allShares, k, prime);
+      
+      const reconstructionResult = findValidSharesAndReconstruct(data);
 
       if (reconstructionResult.error) {
         throw new Error(reconstructionResult.error);
@@ -88,78 +76,116 @@ export default function ShamirReconstructor() {
     });
   };
 
-  return (
-    <div>
-      <div>
-        <input
-          id="file-upload"
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept=".json"
-        />
-        {file && <p>Selected file: {file.name}</p>}
-      </div>
-      <div>
-        <button onClick={handleReconstruct} disabled={!file || isLoading}>
-          {isLoading ? 'Reconstructing...' : 'Reconstruct Secret'}
-        </button>
-        {error && (
-          <div style={{ color: 'red', border: '1px solid red', padding: '10px', marginTop: '10px' }}>
-            <h4>Error</h4>
-            <p>{error}</p>
-          </div>
-        )}
-      </div>
+  const triggerFileSelect = () => {
+    fileInputRef.current?.click();
+  }
 
-      {result && (
-        <div style={{marginTop: '2rem', borderTop: '1px solid #ccc', paddingTop: '1rem'}}>
-          <div>
-            <h3>
+  return (
+    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-4 font-body">
+      <Card className="w-full max-w-2xl shadow-lg">
+        <CardHeader>
+          <div className="flex items-center gap-4">
+             <div className="bg-primary p-3 rounded-full">
+                <KeyRound className="text-primary-foreground" size={24} />
+             </div>
+             <div>
+                <CardTitle className="font-headline text-3xl">Hashira</CardTitle>
+                <CardDescription>Reconstruct secrets with confidence using Shamir's Secret Sharing.</CardDescription>
+             </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+            <div>
+                <Input
+                    id="file-upload"
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept=".json"
+                    className="hidden"
+                />
+                 <Button onClick={triggerFileSelect} variant="outline" className="w-full">
+                    <Upload className="mr-2" />
+                    {file ? `Selected: ${file.name}`: "Upload JSON File"}
+                </Button>
+            </div>
+            
+            <Button onClick={handleReconstruct} disabled={!file || isLoading} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+                {isLoading ? 'Reconstructing...' : 'Reconstruct Secret'}
+            </Button>
+            
+            {error && (
+            <Alert variant="destructive">
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            )}
+        </CardContent>
+
+        {result && (
+        <CardFooter className="flex flex-col items-start gap-6 pt-6 border-t">
+          <div className="w-full">
+            <h3 className="font-headline text-xl mb-2">
               Reconstructed Secret
             </h3>
-            <div style={{ background: '#f0f0f0', padding: '10px', fontFamily: 'monospace' }}>
+            <div className="bg-muted p-4 rounded-md font-code break-all relative group">
               <p>{result.secret.toString()}</p>
-              <button onClick={() => copyToClipboard(result.secret.toString())}>
-                Copy
-              </button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => copyToClipboard(result.secret.toString())}>
+                <Copy size={16}/>
+              </Button>
             </div>
           </div>
           
-          <div style={{display: 'flex', gap: '2rem', marginTop: '1rem'}}>
+          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h4>
+              <h4 className="font-headline text-lg mb-2 flex items-center">
+                <CheckCircle className="text-green-500 mr-2"/>
                 Valid Shares ({result.validShares.length})
               </h4>
-              <ul style={{ background: '#f0f0f0', padding: '10px', listStyle: 'none', maxHeight: '200px', overflowY: 'auto' }}>
-                {result.validShares.map(share => (
-                  <li key={share.x.toString()} style={{fontFamily: 'monospace', fontSize: '12px'}}>
-                    <span>x={share.x.toString()},</span>
-                    <span>y={share.y.toString()}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4>
-                Invalid Shares ({result.invalidShares.length})
-              </h4>
-              {result.invalidShares.length > 0 ? (
-                <ul style={{ background: '#f0f0f0', padding: '10px', listStyle: 'none', maxHeight: '200px', overflowY: 'auto' }}>
-                  {result.invalidShares.map(share => (
-                    <li key={share.x.toString()} style={{fontFamily: 'monospace', fontSize: '12px', color: 'red' }}>
-                       <span>x={share.x.toString()},</span>
-                       <span>y={share.y.toString()}</span>
+              <ScrollArea className="h-48 w-full bg-muted rounded-md p-2">
+                <ul className="space-y-1">
+                  {result.validShares.map(share => (
+                    <li key={share.x.toString()} className="font-code text-sm p-2 rounded bg-background">
+                      <span>x={share.x.toString()}, </span>
+                      <span className="break-all">y={share.y.toString()}</span>
                     </li>
                   ))}
                 </ul>
+              </ScrollArea>
+            </div>
+            <div>
+              <h4 className="font-headline text-lg mb-2 flex items-center">
+                 <XCircle className="text-red-500 mr-2"/>
+                Invalid Shares ({result.invalidShares.length})
+              </h4>
+              <ScrollArea className="h-48 w-full bg-muted rounded-md p-2">
+              {result.invalidShares.length > 0 ? (
+                  <ul className="space-y-1">
+                    {result.invalidShares.map(share => (
+                      <li key={share.x.toString()} className="font-code text-sm p-2 rounded bg-background text-destructive">
+                         <span>x={share.x.toString()}, </span>
+                         <span className="break-all">y={share.y.toString()}</span>
+                      </li>
+                    ))}
+                  </ul>
               ) : (
-                <p><i>No invalid shares were detected.</i></p>
+                <p className="p-2 italic text-muted-foreground">No invalid shares detected.</p>
               )}
+              </ScrollArea>
             </div>
           </div>
-        </div>
-      )}
+        </CardFooter>
+        )}
+      </Card>
+       <Toaster />
     </div>
   );
 }
+
+// Dummy components to avoid breaking the UI
+import { Toaster } from "@/components/ui/toaster";
+import { ScrollArea } from "@/components/ui/scroll-area";
