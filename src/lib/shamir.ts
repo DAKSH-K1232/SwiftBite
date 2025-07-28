@@ -19,9 +19,10 @@ function egcd(a: bigint, b: bigint): [bigint, bigint, bigint] {
 }
 
 function modInverse(a: bigint, m: bigint): bigint {
-  const [g, x] = egcd(a, m);
+  if (m < 0) m = -m;
+  let [g, x] = egcd(a, m);
   if (g !== 1n) {
-    throw new Error('Modular inverse does not exist');
+    throw new Error(`Modular inverse does not exist for ${a} mod ${m}. This should not happen with a prime modulus.`);
   }
   return (x % m + m) % m;
 }
@@ -42,17 +43,35 @@ function lagrangeInterpolate(shares: Share[], prime: bigint): bigint {
       let term = BigInt(xi) - BigInt(xj);
       denominator = (denominator * term) % prime;
     }
-
-    const invDenominator = modInverse(denominator, prime);
+    
+    // Ensure denominator is positive before taking inverse
+    const positiveDenominator = (denominator % prime + prime) % prime;
+    const invDenominator = modInverse(positiveDenominator, prime);
     const lagrangePolynomial = (yi * numerator * invDenominator);
-    secret = (secret + lagrangePolynomial) % prime;
+    secret = (secret + lagrangePolynomial);
   }
 
-  return (secret + prime) % prime;
+  return (secret % prime + prime) % prime;
 }
 
+
 function findValidSharesAndReconstruct(data: ShamirData) {
+  if (!data || typeof data !== 'object') {
+    return { error: 'Invalid data format. Expected a JSON object.' };
+  }
+  
   const { prime, k, shares } = data;
+
+  if (typeof prime !== 'string' || prime.trim() === '') {
+    return { error: 'Invalid or missing "prime" in JSON file.' };
+  }
+  if (typeof k !== 'number' || !Number.isInteger(k) || k <= 0) {
+    return { error: 'Invalid or missing "k" in JSON file. It must be a positive integer.' };
+  }
+  if (!Array.isArray(shares)) {
+    return { error: 'Invalid or missing "shares" array in JSON file.' };
+  }
+  
   const primeBigInt = BigInt(prime);
 
   if (shares.length < k) {
@@ -61,6 +80,7 @@ function findValidSharesAndReconstruct(data: ShamirData) {
 
   function getCombinations<T>(array: T[], size: number): T[][] {
     if (size === 0) return [[]];
+    if (array.length < size) return [];
     if (array.length === 0) return [];
 
     const [first, ...rest] = array;
@@ -79,6 +99,7 @@ function findValidSharesAndReconstruct(data: ShamirData) {
 
       for (const share of shares) {
         if (consistentShares.some(s => s.x === share.x)) continue;
+        if (!share.y) continue; // Skip shares with missing y
 
         const reconstructedY = evaluatePolynomial(consistentShares, primeBigInt, share.x);
         if (BigInt(share.y) === reconstructedY) {
@@ -90,8 +111,9 @@ function findValidSharesAndReconstruct(data: ShamirData) {
         const invalidShares = shares.filter(s => !consistentShares.some(cs => cs.x === s.x));
         return { secret: potentialSecret, invalidShares: invalidShares };
       }
-    } catch (e) {
-      continue;
+    } catch (e: any) {
+      console.error("Error during interpolation:", e.message);
+      // Continue to the next combination
     }
   }
 
@@ -104,6 +126,7 @@ function evaluatePolynomial(shares: Share[], prime: bigint, atX: number): bigint
 
   for (let i = 0; i < shares.length; i++) {
     const { x: xi, y: yiStr } = shares[i];
+    if (!yiStr) continue; // Skip if y is missing
     const yi = BigInt(yiStr);
     let term = yi;
 
@@ -113,7 +136,14 @@ function evaluatePolynomial(shares: Share[], prime: bigint, atX: number): bigint
 
       const numerator = (atXBigInt - BigInt(xj));
       const denominator = (BigInt(xi) - BigInt(xj));
-      term = (term * numerator * modInverse(denominator, prime));
+
+      // Ensure we don't divide by zero if two x values are the same in the combination
+      if (denominator === 0n) {
+          throw new Error("Duplicate x values in shares combination.");
+      }
+      
+      const positiveDenominator = (denominator % prime + prime) % prime;
+      term = (term * numerator * modInverse(positiveDenominator, prime));
     }
     result = (result + term);
   }
