@@ -65,21 +65,19 @@ function lagrangeInterpolate(shares: Share[], prime: bigint): bigint {
       if (i === j) continue;
       const { x: xj } = shares[j];
       
-      let numTerm = (0n - xj);
-      numerator = (numerator * numTerm) % prime;
-      
-      let denTerm = (xi - xj);
-      denominator = (denominator * denTerm) % prime;
+      numerator = (numerator * (0n - xj)) % prime;
+      denominator = (denominator * (xi - xj)) % prime;
     }
     
     if (denominator === 0n) {
         throw new Error(`Cannot reconstruct with this set of shares, division by zero would occur. Check for duplicate x-coordinates.`);
     }
-
-    const lagrangePolynomial = (yi * numerator * modInverse(denominator, prime));
+    
+    const invDenominator = modInverse(denominator, prime);
+    const lagrangePolynomial = (yi * numerator * invDenominator) % prime;
     secret = (secret + lagrangePolynomial) % prime;
   }
-
+  
   return (secret + prime) % prime;
 }
 
