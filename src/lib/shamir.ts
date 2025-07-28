@@ -1,3 +1,4 @@
+
 export interface Share {
   x: bigint;
   y: bigint;
@@ -63,17 +64,19 @@ function lagrangeInterpolate(shares: Share[], prime: bigint): bigint {
     for (let j = 0; j < k; j++) {
       if (i === j) continue;
       const { x: xj } = shares[j];
-      numerator = (numerator * (0n - xj)) % prime;
       
-      let diff = (xi - xj);
-      denominator = (denominator * diff) % prime;
+      let numTerm = (0n - xj);
+      numerator = (numerator * numTerm) % prime;
+      
+      let denTerm = (xi - xj);
+      denominator = (denominator * denTerm) % prime;
     }
     
     if (denominator === 0n) {
         throw new Error(`Cannot reconstruct with this set of shares, division by zero would occur. Check for duplicate x-coordinates.`);
     }
 
-    const lagrangePolynomial = (yi * numerator * modInverse(denominator, prime)) % prime;
+    const lagrangePolynomial = (yi * numerator * modInverse(denominator, prime));
     secret = (secret + lagrangePolynomial) % prime;
   }
 
