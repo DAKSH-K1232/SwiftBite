@@ -17,16 +17,17 @@ function parseBigInt(value: string, base: number | string): bigint {
         throw new Error(`Invalid base for BigInt conversion: ${base}`);
     }
 
-    const legalChars = '0123456789abcdefghijklmnopqrstuvwxyz'.slice(0, baseNum);
-    const regex = new RegExp(`^[${legalChars}]+$`, 'i');
-    if (!regex.test(value)) {
-        throw new Error(`Value "${value}" contains invalid characters for base ${baseNum}`);
+    if (baseNum === 10) {
+        return BigInt(value);
     }
 
     let result = 0n;
     let power = 1n;
     for (let i = value.length - 1; i >= 0; i--) {
         const digit = parseInt(value[i], baseNum);
+        if (isNaN(digit)) {
+             throw new Error(`Value "${value}" contains invalid characters for base ${baseNum}`);
+        }
         result += BigInt(digit) * power;
         power *= BigInt(baseNum);
     }
@@ -170,7 +171,8 @@ export function findValidSharesAndReconstruct(data: ShamirData) {
           return { secret: finalSecret, validShares: consistentShares, invalidShares };
         }
     } catch(e) {
-        console.warn("A combination of shares failed reconstruction, trying next one.", e);
+        // This combination failed, which is expected if it contains invalid shares.
+        // We can ignore this and try the next combination.
     }
   }
 
