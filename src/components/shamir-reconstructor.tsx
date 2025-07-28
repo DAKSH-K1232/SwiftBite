@@ -52,10 +52,25 @@ export default function ShamirReconstructor() {
     reader.readAsText(file);
   };
 
+  const jsonFormat = `{
+  "prime": "a_large_prime_number",
+  "k": 3,
+  "shares": [
+    { "x": 1, "y": "share_value_1" },
+    { "x": 2, "y": "share_value_2" },
+    { "x": 3, "y": "share_value_3" }
+  ]
+}`;
+
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>Shamir Secret Reconstructor</h1>
-      
+      <div style={{ marginBottom: '20px' }}>
+        <h3>Expected JSON file format:</h3>
+        <pre style={{ background: '#f0f0f0', padding: '10px', borderRadius: '5px' }}>
+          <code>{jsonFormat}</code>
+        </pre>
+      </div>
+
       <input type="file" accept=".json" onChange={handleFileChange} />
       
       <button 
