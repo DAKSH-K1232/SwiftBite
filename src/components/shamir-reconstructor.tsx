@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, type ChangeEvent } from 'react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { findValidSharesAndReconstruct, type Share, type ShamirData } from '@/lib/shamir';
-import { CheckCircle, Copy, FileUp, KeyRound, Loader2, ShieldAlert, XCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
 
 interface ResultState {
   secret: bigint;
@@ -21,7 +15,6 @@ export default function ShamirReconstructor() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ResultState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -90,110 +83,89 @@ export default function ShamirReconstructor() {
   }, [file]);
   
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: "Copied to clipboard!",
-      description: "The secret has been copied to your clipboard.",
+    navigator.clipboard.writeText(text).then(() => {
+      alert("Copied to clipboard!");
     });
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileUp className="h-6 w-6" />
-          Upload Your Data
-        </CardTitle>
-        <CardDescription>
+    <div>
+      <div>
+        <h3>Upload Your Data</h3>
+        <p>
           Select a JSON file containing the prime, k, and shares.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Input
+        </p>
+      </div>
+      <div>
+        <input
           id="file-upload"
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
           accept=".json"
-          className="cursor-pointer file:cursor-pointer file:text-primary file:font-semibold"
         />
-        {file && <p className="text-sm text-muted-foreground">Selected file: {file.name}</p>}
-      </CardContent>
-      <CardFooter className="flex flex-col items-stretch gap-4">
-        <Button onClick={handleReconstruct} disabled={!file || isLoading}>
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Reconstructing...
-            </>
-          ) : (
-            'Reconstruct Secret'
-          )}
-        </Button>
+        {file && <p>Selected file: {file.name}</p>}
+      </div>
+      <div>
+        <button onClick={handleReconstruct} disabled={!file || isLoading}>
+          {isLoading ? 'Reconstructing...' : 'Reconstruct Secret'}
+        </button>
         {error && (
-          <Alert variant="destructive">
-            <ShieldAlert className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <div style={{ color: 'red', border: '1px solid red', padding: '10px', marginTop: '10px' }}>
+            <h4>Error</h4>
+            <p>{error}</p>
+          </div>
         )}
-      </CardFooter>
+      </div>
 
       {result && (
-        <CardContent className="mt-6 border-t pt-6 space-y-6">
-          <div className="space-y-4">
-            <h3 className="text-xl font-headline font-semibold flex items-center gap-2">
-              <KeyRound className="h-6 w-6 text-accent" />
+        <div style={{marginTop: '2rem', borderTop: '1px solid #ccc', paddingTop: '1rem'}}>
+          <div>
+            <h3>
               Reconstructed Secret
             </h3>
-            <div className="p-4 bg-secondary rounded-lg font-mono text-sm break-all relative group">
+            <div style={{ background: '#f0f0f0', padding: '10px', fontFamily: 'monospace' }}>
               <p>{result.secret.toString()}</p>
-              <Button 
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => copyToClipboard(result.secret.toString())}>
-                <Copy className="h-4 w-4" />
-              </Button>
+              <button onClick={() => copyToClipboard(result.secret.toString())}>
+                Copy
+              </button>
             </div>
           </div>
           
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <h4 className="font-semibold flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-accent" />
+          <div style={{display: 'flex', gap: '2rem', marginTop: '1rem'}}>
+            <div>
+              <h4>
                 Valid Shares ({result.validShares.length})
               </h4>
-              <ul className="p-3 bg-secondary/50 rounded-lg space-y-2 max-h-48 overflow-y-auto">
+              <ul style={{ background: '#f0f0f0', padding: '10px', listStyle: 'none', maxHeight: '200px', overflowY: 'auto' }}>
                 {result.validShares.map(share => (
-                  <li key={share.x.toString()} className="font-mono text-xs flex gap-2">
-                    <span className="text-muted-foreground">x={share.x.toString()},</span>
+                  <li key={share.x.toString()} style={{fontFamily: 'monospace', fontSize: '12px'}}>
+                    <span>x={share.x.toString()},</span>
                     <span>y={share.y.toString()}</span>
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="space-y-3">
-              <h4 className="font-semibold flex items-center gap-2">
-                <XCircle className="h-5 w-5 text-destructive" />
+            <div>
+              <h4>
                 Invalid Shares ({result.invalidShares.length})
               </h4>
               {result.invalidShares.length > 0 ? (
-                <ul className="p-3 bg-secondary/50 rounded-lg space-y-2 max-h-48 overflow-y-auto">
+                <ul style={{ background: '#f0f0f0', padding: '10px', listStyle: 'none', maxHeight: '200px', overflowY: 'auto' }}>
                   {result.invalidShares.map(share => (
-                    <li key={share.x.toString()} className="font-mono text-xs flex gap-2 text-destructive/80">
-                       <span className="text-muted-foreground">x={share.x.toString()},</span>
+                    <li key={share.x.toString()} style={{fontFamily: 'monospace', fontSize: '12px', color: 'red' }}>
+                       <span>x={share.x.toString()},</span>
                        <span>y={share.y.toString()}</span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground italic">No invalid shares were detected.</p>
+                <p><i>No invalid shares were detected.</i></p>
               )}
             </div>
           </div>
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }
