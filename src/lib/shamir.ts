@@ -11,8 +11,6 @@ export interface ShamirData {
     [key: string]: any;
 }
 
-// A standard 257-bit prime often used in cryptography.
-// This is chosen to be larger than the 256-bit coefficients mentioned in the problem statement.
 const PRIME = 2n**257n - 93557n;
 
 function parseBigInt(value: string, base: number | string): bigint {
@@ -26,12 +24,13 @@ function parseBigInt(value: string, base: number | string): bigint {
     }
 
     let result = 0n;
+    const bigBase = BigInt(baseNum);
     for (let i = 0; i < value.length; i++) {
         const digit = parseInt(value[i], baseNum);
         if (isNaN(digit)) {
              throw new Error(`Value "${value}" contains invalid characters for base ${baseNum}`);
         }
-        result = result * BigInt(baseNum) + BigInt(digit);
+        result = result * bigBase + BigInt(digit);
     }
     return result;
 }
@@ -65,7 +64,9 @@ function lagrangeInterpolate(shares: Share[], prime: bigint): bigint {
       if (i === j) continue;
       const { x: xj } = shares[j];
       numerator = (numerator * (0n - xj)) % prime;
-      denominator = (denominator * (xi - xj)) % prime;
+      
+      let diff = (xi - xj);
+      denominator = (denominator * diff) % prime;
     }
     
     if (denominator === 0n) {
@@ -107,7 +108,6 @@ export function reconstructSecret(data: ShamirData) {
         return { error: `Not enough shares provided. Need at least ${k}, but got ${allShares.length}.` };
     }
   
-    // As per the problem, we use the first k shares to find the secret.
     const sharesToUse = allShares.slice(0, k);
 
     try {
