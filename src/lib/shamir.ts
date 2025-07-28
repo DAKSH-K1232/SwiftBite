@@ -1,39 +1,13 @@
 
 export interface Share {
-  x: bigint;
-  y: bigint;
+  x: number;
+  y: string;
 }
 
 export interface ShamirData {
-    keys: {
-        n: number;
-        k: number;
-    };
-    [key: string]: any;
-}
-
-const PRIME = 2n**257n - 93557n;
-
-function parseBigInt(value: string, base: number | string): bigint {
-    const baseNum = typeof base === 'string' ? parseInt(base, 10) : base;
-    if (isNaN(baseNum) || baseNum < 2 || baseNum > 36) {
-        throw new Error(`Invalid base for BigInt conversion: ${base}`);
-    }
-
-    if (typeof value !== 'string') {
-        throw new Error(`Invalid value for BigInt conversion: must be a string.`);
-    }
-
-    let result = 0n;
-    const bigBase = BigInt(baseNum);
-    for (let i = 0; i < value.length; i++) {
-        const digit = parseInt(value[i], baseNum);
-        if (isNaN(digit)) {
-             throw new Error(`Value "${value}" contains invalid characters for base ${baseNum}`);
-        }
-        result = result * bigBase + BigInt(digit);
-    }
-    return result;
+  prime: string;
+  k: number;
+  shares: Share[];
 }
 
 function egcd(a: bigint, b: bigint): [bigint, bigint, bigint] {
@@ -47,74 +21,104 @@ function egcd(a: bigint, b: bigint): [bigint, bigint, bigint] {
 function modInverse(a: bigint, m: bigint): bigint {
   const [g, x] = egcd(a, m);
   if (g !== 1n) {
-    throw new Error(`Modular inverse does not exist for ${a} mod ${m}. This should not happen with a prime modulus.`);
+    throw new Error('Modular inverse does not exist');
   }
   return (x % m + m) % m;
 }
 
 function lagrangeInterpolate(shares: Share[], prime: bigint): bigint {
   let secret = 0n;
-  const k = shares.length;
 
-  for (let i = 0; i < k; i++) {
-    const { x: xi, y: yi } = shares[i];
+  for (let i = 0; i < shares.length; i++) {
+    const { x: xi, y: yiStr } = shares[i];
+    const yi = BigInt(yiStr);
     let numerator = 1n;
     let denominator = 1n;
 
-    for (let j = 0; j < k; j++) {
+    for (let j = 0; j < shares.length; j++) {
       if (i === j) continue;
       const { x: xj } = shares[j];
-      
-      numerator = (numerator * (0n - xj)) % prime;
-      denominator = (denominator * (xi - xj)) % prime;
+      numerator = (numerator * (0n - BigInt(xj))) % prime;
+      let term = BigInt(xi) - BigInt(xj);
+      denominator = (denominator * term) % prime;
     }
-    
-    if (denominator === 0n) {
-        throw new Error(`Cannot reconstruct with this set of shares, division by zero would occur. Check for duplicate x-coordinates.`);
-    }
-    
+
     const invDenominator = modInverse(denominator, prime);
-    const lagrangePolynomial = (yi * numerator * invDenominator) % prime;
+    const lagrangePolynomial = (yi * numerator * invDenominator);
     secret = (secret + lagrangePolynomial) % prime;
   }
-  
+
   return (secret + prime) % prime;
 }
 
-export function reconstructSecret(data: ShamirData) {
-    if (!data.keys || typeof data.keys.k !== 'number') {
-        return { error: "Invalid JSON structure. It must contain 'keys' object with a numeric 'k' value." };
-    }
+function findValidSharesAndReconstruct(data: ShamirData) {
+  const { prime, k, shares } = data;
+  const primeBigInt = BigInt(prime);
 
-    const { k } = data.keys;
-    const allShares: Share[] = [];
+  if (shares.length < k) {
+    return { error: `Not enough shares to reconstruct. Need ${k}, got ${shares.length}.` };
+  }
 
-    for (const key in data) {
-        if (key !== "keys") {
-            try {
-                const x = BigInt(key);
-                const { base, value } = data[key];
-                if (base === undefined || value === undefined) {
-                  throw new Error(`Share for key "${key}" is missing 'base' or 'value'.`);
-                }
-                const y = parseBigInt(value, base);
-                allShares.push({ x, y });
-            } catch (e: any) {
-                 return { error: `Failed to parse share for key "${key}": ${e.message}` };
-            }
-        }
-    }
+  function getCombinations<T>(array: T[], size: number): T[][] {
+    if (size === 0) return [[]];
+    if (array.length === 0) return [];
 
-    if (allShares.length < k) {
-        return { error: `Not enough shares provided. Need at least ${k}, but got ${allShares.length}.` };
-    }
-  
-    const sharesToUse = allShares.slice(0, k);
+    const [first, ...rest] = array;
+    const combsWithFirst = getCombinations(rest, size - 1).map(comb => [first, ...comb]);
+    const combsWithoutFirst = getCombinations(rest, size);
 
+    return [...combsWithFirst, ...combsWithoutFirst];
+  }
+
+  const shareCombinations = getCombinations(shares, k);
+
+  for (const combination of shareCombinations) {
     try {
-        const secret = lagrangeInterpolate(sharesToUse, PRIME);
-        return { secret };
-    } catch(e: any) {
-        return { error: `Could not reconstruct secret: ${e.message}` };
+      const potentialSecret = lagrangeInterpolate(combination, primeBigInt);
+      let consistentShares = combination.slice();
+
+      for (const share of shares) {
+        if (consistentShares.some(s => s.x === share.x)) continue;
+
+        const reconstructedY = evaluatePolynomial(consistentShares, primeBigInt, share.x);
+        if (BigInt(share.y) === reconstructedY) {
+          consistentShares.push(share);
+        }
+      }
+
+      if (consistentShares.length >= k) {
+        const invalidShares = shares.filter(s => !consistentShares.some(cs => cs.x === s.x));
+        return { secret: potentialSecret, invalidShares: invalidShares };
+      }
+    } catch (e) {
+      continue;
     }
+  }
+
+  return { error: 'Could not find a consistent set of k shares to reconstruct the secret.' };
 }
+
+function evaluatePolynomial(shares: Share[], prime: bigint, atX: number): bigint {
+  let result = 0n;
+  const atXBigInt = BigInt(atX);
+
+  for (let i = 0; i < shares.length; i++) {
+    const { x: xi, y: yiStr } = shares[i];
+    const yi = BigInt(yiStr);
+    let term = yi;
+
+    for (let j = 0; j < shares.length; j++) {
+      if (i === j) continue;
+      const { x: xj } = shares[j];
+
+      const numerator = (atXBigInt - BigInt(xj));
+      const denominator = (BigInt(xi) - BigInt(xj));
+      term = (term * numerator * modInverse(denominator, prime));
+    }
+    result = (result + term);
+  }
+
+  return (result % prime + prime) % prime;
+}
+
+export { findValidSharesAndReconstruct };
