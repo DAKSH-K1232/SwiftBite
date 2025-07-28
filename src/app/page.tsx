@@ -1,5 +1,6 @@
 import ShamirReconstructor from '@/components/shamir-reconstructor';
-import { FlameKindling } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FlameKindling, HelpCircle } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -16,7 +17,34 @@ export default function Home() {
               Upload your Shamir's Secret Sharing JSON file to reconstruct the original secret, even with potentially invalid shares.
             </p>
         </div>
+
         <ShamirReconstructor />
+
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <HelpCircle className="h-6 w-6 text-accent" />
+              How It Works
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-muted-foreground">
+            <p>
+              This tool helps you securely reconstruct a secret that has been split into multiple pieces or "shares" using an algorithm called <strong>Shamir's Secret Sharing</strong>.
+            </p>
+            <ul className="list-disc list-inside space-y-2 pl-2">
+              <li>
+                <strong>Reconstructs Secrets:</strong> It takes a set of shares and combines them to reveal the original secret data.
+              </li>
+              <li>
+                <strong>Error Correction:</strong> You don't need all the shares. If you have enough valid shares (reaching the "threshold"), the secret can be recovered even if other shares are lost or corrupted.
+              </li>
+              <li>
+                <strong>Secure &amp; Private:</strong> All calculations happen directly in your browser. Your secret data is never uploaded to a server.
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+
         <footer className="text-center mt-8 text-sm text-muted-foreground">
           <p>&copy; {new Date().getFullYear()} Shamir's Sentinel. All rights reserved.</p>
         </footer>
