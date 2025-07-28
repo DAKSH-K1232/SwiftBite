@@ -11,29 +11,30 @@ export interface ShamirData {
     [key: string]: any;
 }
 
+// A standard 257-bit prime often used in cryptography.
+// This is chosen to be larger than the 256-bit coefficients mentioned in the problem statement.
+const PRIME = 2n**257n - 93557n;
+
 function parseBigInt(value: string, base: number | string): bigint {
     const baseNum = typeof base === 'string' ? parseInt(base, 10) : base;
     if (isNaN(baseNum) || baseNum < 2 || baseNum > 36) {
         throw new Error(`Invalid base for BigInt conversion: ${base}`);
     }
 
-    if (baseNum === 10) {
-        return BigInt(value);
+    if (typeof value !== 'string') {
+        throw new Error(`Invalid value for BigInt conversion: must be a string.`);
     }
 
     let result = 0n;
-    let power = 1n;
-    for (let i = value.length - 1; i >= 0; i--) {
+    for (let i = 0; i < value.length; i++) {
         const digit = parseInt(value[i], baseNum);
         if (isNaN(digit)) {
              throw new Error(`Value "${value}" contains invalid characters for base ${baseNum}`);
         }
-        result += BigInt(digit) * power;
-        power *= BigInt(baseNum);
+        result = result * BigInt(baseNum) + BigInt(digit);
     }
     return result;
 }
-
 
 function egcd(a: bigint, b: bigint): [bigint, bigint, bigint] {
   if (a === 0n) {
@@ -46,12 +47,12 @@ function egcd(a: bigint, b: bigint): [bigint, bigint, bigint] {
 function modInverse(a: bigint, m: bigint): bigint {
   const [g, x] = egcd(a, m);
   if (g !== 1n) {
-    throw new Error(`Modular inverse does not exist for ${a} and ${m}. The prime may be incorrect or shares might be malformed.`);
+    throw new Error(`Modular inverse does not exist for ${a} mod ${m}. This should not happen with a prime modulus.`);
   }
   return (x % m + m) % m;
 }
 
-function reconstructSecret(shares: Share[], prime: bigint): bigint {
+function lagrangeInterpolate(shares: Share[], prime: bigint): bigint {
   let secret = 0n;
   const k = shares.length;
 
@@ -78,59 +79,22 @@ function reconstructSecret(shares: Share[], prime: bigint): bigint {
   return (secret + prime) % prime;
 }
 
-function getCombinations<T>(array: T[], size: number): T[][] {
-  const result: T[][] = [];
-  function combine(startIndex: number, combination: T[]) {
-    if (combination.length === size) {
-      result.push([...combination]);
-      return;
-    }
-    if (startIndex >= array.length) {
-        return;
-    }
-    
-    combination.push(array[startIndex]);
-    combine(startIndex + 1, combination);
-    combination.pop();
-    combine(startIndex + 1, combination);
-  }
-  combine(0, []);
-  return result;
-}
-
-function evaluatePolynomial(x: bigint, points: Share[], prime: bigint): bigint {
-  let result = 0n;
-  const k = points.length;
-
-  for (let i = 0; i < k; i++) {
-    const { x: xi, y: yi } = points[i];
-    let term = yi;
-    for (let j = 0; j < k; j++) {
-      if (i === j) continue;
-      const { x: xj } = points[j];
-      const numerator = (x - xj);
-      const denominator = (xi - xj);
-      term = (term * numerator * modInverse(denominator, prime)) % prime;
-    }
-    result = (result + term) % prime;
-  }
-  return (result + prime) % prime;
-}
-
-export function findValidSharesAndReconstruct(data: ShamirData) {
+export function reconstructSecret(data: ShamirData) {
     if (!data.keys || typeof data.keys.k !== 'number') {
         return { error: "Invalid JSON structure. It must contain 'keys' object with a numeric 'k' value." };
     }
 
     const { k } = data.keys;
-    const prime = 257n; 
-
     const allShares: Share[] = [];
+
     for (const key in data) {
         if (key !== "keys") {
             try {
                 const x = BigInt(key);
                 const { base, value } = data[key];
+                if (base === undefined || value === undefined) {
+                  throw new Error(`Share for key "${key}" is missing 'base' or 'value'.`);
+                }
                 const y = parseBigInt(value, base);
                 allShares.push({ x, y });
             } catch (e: any) {
@@ -139,42 +103,17 @@ export function findValidSharesAndReconstruct(data: ShamirData) {
         }
     }
 
-  if (allShares.length < k) {
-    return { error: `Not enough shares provided. Need at least ${k}, but got ${allShares.length}.` };
-  }
-
-  const uniqueShares = Array.from(new Map(allShares.map(item => [item.x, item])).values());
-  
-  if (uniqueShares.length < k) {
-    return { error: `Not enough unique shares provided. Need at least ${k}, but got ${uniqueShares.length}.` };
-  }
-
-  const combinations = getCombinations(uniqueShares, k);
-
-  for (const combo of combinations) {
-    try {
-        const secretCandidate = reconstructSecret(combo, prime);
-      
-        const consistentShares = [...combo];
-        const otherShares = uniqueShares.filter(s => !combo.find(cs => cs.x === s.x));
-
-        for (const otherShare of otherShares) {
-            const predictedY = evaluatePolynomial(otherShare.x, combo, prime);
-            if (predictedY === otherShare.y) {
-                consistentShares.push(otherShare);
-            }
-        }
-
-        if (consistentShares.length >= k) {
-          const finalSecret = reconstructSecret(consistentShares.slice(0, k), prime);
-          const invalidShares = uniqueShares.filter(s => !consistentShares.find(cs => cs.x === s.x));
-          return { secret: finalSecret, validShares: consistentShares, invalidShares };
-        }
-    } catch(e) {
-        // This combination failed, which is expected if it contains invalid shares.
-        // We can ignore this and try the next combination.
+    if (allShares.length < k) {
+        return { error: `Not enough shares provided. Need at least ${k}, but got ${allShares.length}.` };
     }
-  }
+  
+    // As per the problem, we use the first k shares to find the secret.
+    const sharesToUse = allShares.slice(0, k);
 
-  return { error: 'Could not find a consistent set of k shares to reconstruct the secret. The data might be corrupted or the prime incorrect.' };
+    try {
+        const secret = lagrangeInterpolate(sharesToUse, PRIME);
+        return { secret };
+    } catch(e: any) {
+        return { error: `Could not reconstruct secret: ${e.message}` };
+    }
 }
