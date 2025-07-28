@@ -91,12 +91,6 @@ export default function ShamirReconstructor() {
   return (
     <div>
       <div>
-        <h3>Upload Your Data</h3>
-        <p>
-          Select a JSON file containing the prime, k, and shares.
-        </p>
-      </div>
-      <div>
         <input
           id="file-upload"
           type="file"
