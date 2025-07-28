@@ -2,7 +2,7 @@ import type {Metadata} from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Shamir's Sentinel",
+  title: "Hashira",
   description: "Reconstruct secrets with confidence using Shamir's Secret Sharing.",
 };
 
